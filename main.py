@@ -24,7 +24,11 @@ def load_env(path):
     return values
 
 def prompt(message, default=''):
-    answer = input(f"{message}{' [' + default + ']' if default else ''}: ").strip()
+    try:
+        answer = input(f"{message}{' [' + default + ']' if default else ''}: ").strip()
+    except (KeyboardInterrupt, EOFError):
+        print('\nCanceled by user.')
+        sys.exit(0)
     return answer or default
 
 def request_json(url, token, method='GET', data=None, params=None):
