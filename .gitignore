@@ -1,1 +1,13 @@
 node_modules/
+.env
+
+# Keep download folder structure but ignore actual downloaded files
+/downloads/*
+!/downloads/direct/
+!/downloads/youtube/
+!/downloads/telegram/
+!/downloads/browse/
+!/downloads/direct/.gitkeep
+!/downloads/youtube/.gitkeep
+!/downloads/telegram/.gitkeep
+!/downloads/browse/.gitkeep

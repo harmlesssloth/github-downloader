@@ -95,7 +95,7 @@ def select_branch(info):
 def get_latest_run_id(token, owner, repo, branch, workflow):
     url = f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/{workflow}/runs"
     runs = request_json(url, token, params={"branch": branch, "event": "workflow_dispatch", "per_page": 5})
-    if not runs or 'workflow_runs' not in runs:
+    if not runs or 'workflow_runs' not in runs or not runs['workflow_runs']:
         return None
     for run in runs['workflow_runs']:
         if run.get('head_branch') == branch:
@@ -108,7 +108,10 @@ def run_workflow(token, owner, repo, branch, workflow, inputs):
     if result is None:
         return None
     print('Workflow dispatched successfully.')
-    return get_latest_run_id(token, owner, repo, branch, workflow)
+    run_id = get_latest_run_id(token, owner, repo, branch, workflow)
+    if run_id is None:
+        print('Workflow dispatch succeeded, but no run was found yet. Check the repository Actions page for the new run.')
+    return run_id
 
 def open_log_window(owner, repo, run_id):
     gh = shutil.which('gh')
