@@ -80,3 +80,14 @@ jobs:
             echo "- [${file_name}](${raw_url})" >> "${MD_FILE}"
           done
           echo "Saved Telegram files to ${DIR}"
+      - name: Commit Telegram output
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "downloads/telegram"
+          if git diff --cached --quiet; then
+            echo "No Telegram downloaded files to commit."
+          else
+            git commit -m "Add Telegram download output"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi

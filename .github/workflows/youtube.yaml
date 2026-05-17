@@ -59,7 +59,20 @@ jobs:
           QUALITY="${{ github.event.inputs.quality }}"
           MAX_VIDEOS="${{ github.event.inputs.max_videos }}"
           ROOT="downloads/youtube"
-          NAME="$(printf '%s' "${INPUT}" | sed 's/[^a-zA-Z0-9._-]/_/g' | cut -c1-80)"
+          sanitize() {
+            local value="$1"
+            printf '%s' "$value" | sed 's/[^a-zA-Z0-9._-]/_/g' | cut -c1-80
+          }
+          if [ "${MODE}" = "single" ]; then
+            NAME="$(yt-dlp --get-title "${INPUT}" 2>/dev/null | head -n 1)"
+            NAME="$(sanitize "${NAME}")"
+            if [ -z "${NAME}" ]; then
+              NAME="$(yt-dlp --get-id "${INPUT}" 2>/dev/null || echo 'youtube')"
+              NAME="$(sanitize "${NAME}")"
+            fi
+          else
+            NAME="${MODE}_$(sanitize "${INPUT}")"
+          fi
           NAME="${NAME:-youtube}"
           DIR="${ROOT}/${NAME}/files"
           if [ -d "${DIR}" ]; then
@@ -91,3 +104,14 @@ jobs:
             echo "- [${file_name}](${raw_url})" >> "${MD_FILE}"
           done
           echo "Saved YouTube files to ${DIR}"
+      - name: Commit YouTube output
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "downloads/youtube"
+          if git diff --cached --quiet; then
+            echo "No downloaded files to commit."
+          else
+            git commit -m "Add YouTube download output"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
