@@ -1,0 +1,10 @@
+{
+  "name": "github-downloader",
+  "private": true,
+  "devDependencies": {
+    "prettier": "^3.0.0"
+  },
+  "scripts": {
+    "format": "prettier --write '**/*.{js,jsx,ts,tsx,json,md,yaml,yml}'"
+  }
+}

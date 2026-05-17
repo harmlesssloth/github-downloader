@@ -1,0 +1,39 @@
+name: Browse Capture
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'Web URL to capture'
+        required: true
+        type: string
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+      - name: Fetch page
+        run: |
+          set -euo pipefail
+          URL="${{ github.event.inputs.url }}"
+          ROOT="downloads/browse"
+          NAME="$(basename "${URL%%[?#]*}" | sed 's/[^a-zA-Z0-9._-]/_/g' | cut -c1-80)"
+          NAME="${NAME:-browse}"
+          DIR="${ROOT}/${NAME}/files"
+          if [ -d "${DIR}" ]; then
+            DIR="${ROOT}/${NAME}_$(date +%s)/files"
+          fi
+          mkdir -p "${DIR}"
+          OUTFILE="${DIR}/page.html"
+          curl -L -f --retry 3 --retry-delay 5 -o "${OUTFILE}" "${URL}"
+          LINKS_FILE="${DIR}/links.txt"
+          MD_FILE="${DIR}/links.md"
+          echo "${URL}" > "${LINKS_FILE}"
+          echo "# Browsed page" > "${MD_FILE}"
+          echo "- [${URL}](${URL})" >> "${MD_FILE}"
+          echo "Captured page to ${OUTFILE}"

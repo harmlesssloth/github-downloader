@@ -1,0 +1,82 @@
+name: Telegram Download
+on:
+  workflow_dispatch:
+    inputs:
+      telegram_links:
+        description: 'Space-separated Telegram URLs'
+        required: true
+        type: string
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y aria2 curl zip python3
+      - name: Download Telegram files
+        run: |
+          set -euo pipefail
+          URLS="${{ github.event.inputs.telegram_links }}"
+          ROOT="downloads/telegram"
+          NAME="telegram_$(date +%Y%m%d_%H%M%S)"
+          DIR="${ROOT}/${NAME}/files"
+          mkdir -p "${DIR}"
+          rm -rf tmp
+          mkdir -p tmp
+          sanitize() {
+            local value="$1"
+            value="${value##*/}"
+            value="${value%%[?#]*}"
+            value="$(printf '%s' "$value" | tr ' ' '_' | sed 's/[^a-zA-Z0-9._-]/_/g' | cut -c1-120)"
+            printf '%s' "$value"
+          }
+          unique_file() {
+            local name="$1"
+            local base="${name%.*}"
+            local ext="${name##*.}"
+            if [ "$base" = "$name" ]; then
+              ext=''
+            else
+              ext=".${ext}"
+            fi
+            local candidate="$name"
+            local index=1
+            while [ -e "${DIR}/${candidate}" ]; do
+              candidate="${base}_${index}${ext}"
+              index=$((index + 1))
+            done
+            printf '%s' "$candidate"
+          }
+          for url in $URLS; do
+            [ -z "$url" ] && continue
+            FILENAME="$(sanitize "$url")"
+            if [ -z "$FILENAME" ]; then
+              FILENAME="telegram_file_$(date +%s).bin"
+            fi
+            FILENAME="$(unique_file "$FILENAME")"
+            aria2c --split=4 --max-connection-per-server=4 --min-split-size=10M --max-tries=3 --retry-wait=5 --timeout=60 --connect-timeout=30 --file-allocation=none --dir="tmp" --out="$FILENAME" "$url" ; curl -L -f --retry 3 --retry-delay 5 -o "tmp/$FILENAME" "$url"
+            mv "tmp/$FILENAME" "${DIR}/"
+          done
+          LINKS_FILE="${DIR}/links.txt"
+          MD_FILE="${DIR}/links.md"
+          rm -f "${LINKS_FILE}" "${MD_FILE}"
+          for file_path in "${DIR}"/*; do
+            [ -f "$file_path" ] || continue
+            file_name="$(basename "$file_path")"
+            case "$file_name" in
+              links.txt|links.md) continue ;;
+            esac
+            rel_path="downloads/telegram/${NAME}/files/${file_name}"
+            raw_url="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_REF_NAME}/${rel_path}"
+            echo "$raw_url" >> "${LINKS_FILE}"
+            echo "- [${file_name}](${raw_url})" >> "${MD_FILE}"
+          done
+          echo "Saved Telegram files to ${DIR}"

@@ -1,0 +1,25 @@
+name: Clean Downloads
+on:
+  workflow_dispatch:
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+      - name: Remove empty and temporary download directories
+        run: |
+          set -euo pipefail
+          ROOT=downloads
+          if [ ! -d "$ROOT" ]; then
+            echo "No downloads directory present."
+            exit 0
+          fi
+          find "$ROOT" -type f -name '*.tmp' -delete
+          find "$ROOT" -type d -empty -delete
+          echo "Clean complete."

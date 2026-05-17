@@ -1,0 +1,115 @@
+name: Download
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: 'Space-separated URLs'
+        required: true
+        type: string
+      mode:
+        description: 'Download mode'
+        required: false
+        type: choice
+        default: 'normal'
+        options:
+          - normal
+          - zip
+      password:
+        description: 'Password for zip archive (optional)'
+        required: false
+        type: string
+        default: ''
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y aria2 zip curl python3 python3-pip
+      - name: Download direct files
+        run: |
+          set -euo pipefail
+          URLS="${{ github.event.inputs.urls }}"
+          MODE="${{ github.event.inputs.mode }}"
+          PASSWORD="${{ github.event.inputs.password }}"
+          ROOT="downloads/direct"
+          FIRST_URL="${URLS%% *}"
+          NAME="$(basename "${FIRST_URL%%[?#]*}")"
+          NAME="${NAME:-direct}"
+          NAME="$(printf '%s' "$NAME" | tr ' ' '_' | sed 's/[^a-zA-Z0-9._-]/_/g' | cut -c1-80)"
+          DIR="${ROOT}/${NAME}/files"
+          if [ -d "${DIR}" ]; then
+            DIR="${ROOT}/${NAME}_$(date +%s)/files"
+          fi
+          mkdir -p "${DIR}"
+          rm -rf tmp
+          mkdir -p tmp
+          sanitize() {
+            local value="$1"
+            value="${value##*/}"
+            value="${value%%[?#]*}"
+            value="$(printf '%s' "$value" | tr ' ' '_' | sed 's/[^a-zA-Z0-9._-]/_/g' | cut -c1-120)"
+            printf '%s' "$value"
+          }
+          unique_file() {
+            local name="$1"
+            local base="${name%.*}"
+            local ext="${name##*.}"
+            if [ "$base" = "$name" ]; then
+              ext=''
+            else
+              ext=".${ext}"
+            fi
+            local candidate="$name"
+            local index=1
+            while [ -e "${DIR}/${candidate}" ]; do
+              candidate="${base}_${index}${ext}"
+              index=$((index + 1))
+            done
+            printf '%s' "$candidate"
+          }
+          download() {
+            local url="$1"
+            local out="$2"
+            aria2c --split=4 --max-connection-per-server=4 --min-split-size=10M --max-tries=3 --retry-wait=5 --timeout=60 --connect-timeout=30 --file-allocation=none --dir="tmp" --out="$out" "$url" ; curl -L -f --retry 3 --retry-delay 5 -o "tmp/$out" "$url"
+          }
+          for url in $URLS; do
+            if [ -z "$url" ]; then
+              continue
+            fi
+            FILENAME="$(sanitize "$url")"
+            if [ -z "$FILENAME" ]; then
+              FILENAME="file_$(date +%s).bin"
+            fi
+            FILENAME="$(unique_file "$FILENAME")"
+            download "$url" "$FILENAME"
+            mv "tmp/$FILENAME" "${DIR}/"
+          done
+          if [ "$MODE" = "zip" ]; then
+            ARCHIVE="${DIR}/archive_$(date +%Y%m%d_%H%M%S).zip"
+            find "${DIR}" -maxdepth 1 -type f ! -name 'links.txt' ! -name 'links.md' -print0 | xargs -0 zip -j "${ARCHIVE}"
+            find "${DIR}" -maxdepth 1 -type f ! -name "$(basename "$ARCHIVE")" ! -name 'links.txt' ! -name 'links.md' -delete
+          fi
+          LINKS_FILE="${DIR}/links.txt"
+          MD_FILE="${DIR}/links.md"
+          rm -f "${LINKS_FILE}" "${MD_FILE}"
+          for file_path in "${DIR}"/*; do
+            [ -f "$file_path" ] || continue
+            file_name="$(basename "$file_path")"
+            case "$file_name" in
+              links.txt|links.md) continue ;;
+            esac
+            rel_path="downloads/direct/${NAME}/files/${file_name}"
+            raw_url="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_REF_NAME}/${rel_path}"
+            echo "$raw_url" >> "${LINKS_FILE}"
+            echo "- [${file_name}](${raw_url})" >> "${MD_FILE}"
+          done
+          echo "Files saved to ${DIR}"

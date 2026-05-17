@@ -1,0 +1,93 @@
+name: YouTube Download
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Operation mode: single, playlist, channel, search'
+        required: true
+        type: choice
+        default: 'single'
+        options:
+          - single
+          - playlist
+          - channel
+          - search
+      url:
+        description: 'YouTube URL or search query'
+        required: true
+        type: string
+      type:
+        description: 'Download type: video or audio'
+        required: true
+        type: choice
+        default: 'video'
+        options:
+          - video
+          - audio
+      quality:
+        description: 'Quality or bitrate'
+        required: false
+        type: string
+        default: '720'
+      max_videos:
+        description: 'Max videos to download'
+        required: false
+        type: number
+        default: 10
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+      - name: Install yt-dlp and dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-pip curl zip
+          python3 -m pip install --upgrade yt-dlp
+      - name: Download YouTube content
+        run: |
+          set -euo pipefail
+          MODE="${{ github.event.inputs.mode }}"
+          INPUT="${{ github.event.inputs.url }}"
+          TYPE="${{ github.event.inputs.type }}"
+          QUALITY="${{ github.event.inputs.quality }}"
+          MAX_VIDEOS="${{ github.event.inputs.max_videos }}"
+          ROOT="downloads/youtube"
+          NAME="$(printf '%s' "${INPUT}" | sed 's/[^a-zA-Z0-9._-]/_/g' | cut -c1-80)"
+          NAME="${NAME:-youtube}"
+          DIR="${ROOT}/${NAME}/files"
+          if [ -d "${DIR}" ]; then
+            DIR="${ROOT}/${NAME}_$(date +%s)/files"
+          fi
+          mkdir -p "${DIR}"
+          if [ "${TYPE}" = "audio" ]; then
+            FORMAT="bestaudio"
+          else
+            FORMAT="bestvideo[height<=${QUALITY}]+bestaudio/best[height<=${QUALITY}]"
+          fi
+          EXTRA=""
+          if [ "${MODE}" = "search" ]; then
+            EXTRA="--max-downloads ${MAX_VIDEOS}"
+          elif [ "${MODE}" = "playlist" ] || [ "${MODE}" = "channel" ]; then
+            EXTRA="--yes-playlist"
+          else
+            EXTRA="--no-playlist"
+          fi
+          yt-dlp --output "${DIR}/%(title).100s.%(ext)s" --format "${FORMAT}" ${EXTRA} "${INPUT}"
+          LINKS_FILE="${DIR}/links.txt"
+          MD_FILE="${DIR}/links.md"
+          rm -f "${LINKS_FILE}" "${MD_FILE}"
+          find "${DIR}" -type f ! -name 'links.txt' ! -name 'links.md' -print0 | while IFS= read -r -d '' file_path; do
+            file_name="$(basename "$file_path")"
+            rel_path="downloads/youtube/${NAME}/files/${file_name}"
+            raw_url="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_REF_NAME}/${rel_path}"
+            echo "$raw_url" >> "${LINKS_FILE}"
+            echo "- [${file_name}](${raw_url})" >> "${MD_FILE}"
+          done
+          echo "Saved YouTube files to ${DIR}"

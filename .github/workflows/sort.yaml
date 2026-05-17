@@ -1,0 +1,52 @@
+name: Sort Downloads
+on:
+  workflow_dispatch:
+    inputs:
+      target_type:
+        description: 'Download type to sort'
+        required: true
+        type: choice
+        default: 'direct'
+        options:
+          - direct
+          - youtube
+          - telegram
+          - browse
+          - all
+jobs:
+  sort:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+      - name: Sort download files by extension
+        run: |
+          set -euo pipefail
+          TYPE="${{ github.event.inputs.target_type }}"
+          ROOT=downloads
+          if [ "$TYPE" = 'all' ]; then
+            TYPES='direct youtube telegram browse'
+          else
+            TYPES="$TYPE"
+          fi
+          for t in $TYPES; do
+            for folder in "$ROOT/$t"/*/files; do
+              [ -d "$folder" ] || continue
+              find "$folder" -maxdepth 1 -type f ! -name 'links.txt' ! -name 'links.md' | while read -r file_path; do
+                base="$(basename "$file_path")"
+                ext="${base##*.}"
+                if [ "$base" = "$ext" ]; then
+                  ext='other'
+                fi
+                dest="$folder/sorted/${ext}"
+                mkdir -p "$dest"
+                mv "$file_path" "$dest/"
+              done
+            done
+          done
+          echo "Sort complete."
