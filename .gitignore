@@ -1,7 +1,15 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.python-version
+env/
+venv/
+.venv/
+.pytest_cache/
 node_modules/
 .env
+.env.*
 
-# Keep download folder structure but ignore actual downloaded files
 /downloads/*
 !/downloads/direct/
 !/downloads/youtube/
